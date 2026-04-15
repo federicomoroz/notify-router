@@ -43,5 +43,8 @@ class ChannelOut(BaseModel):
     @classmethod
     def parse_config(cls, v):
         if isinstance(v, str):
-            return json.loads(v)
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return {}
         return v

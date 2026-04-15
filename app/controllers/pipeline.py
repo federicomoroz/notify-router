@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,7 @@ class RouterContext:
     results:       list[dict] = field(default_factory=list)
 
 
+@runtime_checkable
 class PipelineStep(Protocol):
     async def execute(self, ctx: RouterContext) -> None:
         ...
@@ -75,6 +76,7 @@ class DispatchStep:
                     rule_id=rule.id,
                     channel_id=channel.id,
                     channel_type=channel.type,
+                    info=info,
                 ))
             else:
                 ctx.events.emit(DispatchFailed(
@@ -88,6 +90,9 @@ class DispatchStep:
 
 class RouterPipeline:
     def __init__(self, steps: list[PipelineStep]) -> None:
+        for step in steps:
+            if not isinstance(step, PipelineStep):
+                raise TypeError(f"{step!r} does not implement PipelineStep")
         self._steps = steps
 
     async def run(self, ctx: RouterContext) -> list[dict]:

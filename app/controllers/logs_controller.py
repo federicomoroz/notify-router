@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 def list_logs(
     event_id: int | None = None,
     status: str | None = None,
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=10000),
     db: Session = Depends(get_db),
 ):
     return LogRepository.list_all(db, event_id=event_id, status=status, limit=limit)

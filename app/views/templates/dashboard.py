@@ -1,4 +1,5 @@
-from datetime import datetime
+import html as _html
+from datetime import datetime, timezone
 
 
 def render_dashboard(
@@ -19,12 +20,12 @@ def render_dashboard(
         status_class = "ok" if log["status"] == "success" else "err"
         rows += (
             f'<tr>'
-            f'<td>{log["id"]}</td>'
-            f'<td>{log["event_id"]}</td>'
-            f'<td>{log["channel_type"]}</td>'
-            f'<td class="{status_class}">{log["status"].upper()}</td>'
-            f'<td>{log.get("response_info") or ""}</td>'
-            f'<td>{log["dispatched_at"]}</td>'
+            f'<td>{_html.escape(str(log["id"]))}</td>'
+            f'<td>{_html.escape(str(log["event_id"]))}</td>'
+            f'<td>{_html.escape(str(log["channel_type"]))}</td>'
+            f'<td class="{status_class}">{_html.escape(log["status"].upper())}</td>'
+            f'<td>{_html.escape(str(log.get("response_info") or ""))}</td>'
+            f'<td>{_html.escape(str(log["dispatched_at"]))}</td>'
             f'</tr>'
         )
 
@@ -79,7 +80,7 @@ def render_dashboard(
 </head>
 <body>
   <h1>&gt; NOTIFY-ROUTER</h1>
-  <p class="subtitle">multi-channel notification routing engine &mdash; {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+  <p class="subtitle">multi-channel notification routing engine &mdash; {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
 
   <div class="stats">
     <div class="card">

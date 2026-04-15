@@ -21,6 +21,7 @@ class LogListener:
                     channel_id=event.channel_id,
                     channel_type=event.channel_type,
                     status="success",
+                    response_info=event.info[:500] if event.info else None,
                 ),
             )
         finally:

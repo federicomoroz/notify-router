@@ -30,5 +30,8 @@ class DispatcherService:
         impl = self._registry.get(channel.type)
         if not impl:
             return False, f"Unknown channel type: {channel.type}"
-        config = json.loads(channel.config or "{}")
+        try:
+            config = json.loads(channel.config or "{}")
+        except json.JSONDecodeError as exc:
+            return False, f"Invalid channel config JSON: {exc}"
         return await impl.send(self._http, config, event, payload)

@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -15,9 +17,9 @@ class EmailChannel(ChannelBase):
         event: EventRecord,
         payload: dict,
     ) -> tuple[bool, str]:
-        to_addr        = config.get("to", "")
-        subject_tmpl   = config.get("subject_template", "[{source}] {event_type}")
-        subject        = subject_tmpl.format(source=event.source, event_type=event.event_type)
+        to_addr      = config.get("to", "")
+        subject_tmpl = config.get("subject_template", "[{source}] {event_type}")
+        subject      = subject_tmpl.format(source=event.source, event_type=event.event_type)
 
         if not to_addr:
             return False, "email config missing 'to' address"
@@ -29,16 +31,20 @@ class EmailChannel(ChannelBase):
             f"<strong>Event:</strong> {event.event_type}<br>"
             f"<strong>Payload:</strong><pre>{payload}</pre>"
         )
+        message = Mail(
+            from_email=SENDER_EMAIL,
+            to_emails=to_addr,
+            subject=subject,
+            html_content=body,
+        )
 
-        try:
-            message = Mail(
-                from_email=SENDER_EMAIL,
-                to_emails=to_addr,
-                subject=subject,
-                html_content=body,
-            )
-            sg = SendGridAPIClient(SENDGRID_API_KEY)
-            response = sg.send(message)
-            return True, f"SendGrid status {response.status_code}"
-        except Exception as exc:
-            return False, str(exc)
+        def _send_sync() -> tuple[bool, str]:
+            try:
+                sg = SendGridAPIClient(SENDGRID_API_KEY)
+                response = sg.send(message)
+                return True, f"SendGrid status {response.status_code}"
+            except Exception as exc:
+                return False, str(exc)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _send_sync)

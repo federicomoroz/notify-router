@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,7 +30,7 @@ class LogRepository:
 
     @staticmethod
     def purge_old(db: Session, retention_days: int) -> int:
-        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
         deleted = (
             db.query(DispatchLog)
             .filter(DispatchLog.dispatched_at < cutoff)

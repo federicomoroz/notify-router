@@ -14,6 +14,7 @@ class DispatchSucceeded:
     rule_id:      int
     channel_id:   int
     channel_type: str
+    info:         str = ""
 
 
 @dataclass(frozen=True)

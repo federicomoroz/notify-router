@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -42,4 +43,8 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     channel = ChannelRepository.get(db, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    ChannelRepository.delete(db, channel)
+    try:
+        ChannelRepository.delete(db, channel)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Channel is referenced by existing rules or logs")

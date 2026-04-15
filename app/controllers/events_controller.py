@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -59,5 +59,8 @@ async def receive_event(
 
 
 @router.get("", response_model=list[EventOut])
-def list_events(db: Session = Depends(get_db)):
-    return EventRepository.list_recent(db, limit=50)
+def list_events(
+    limit: int = Query(default=50, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    return EventRepository.list_recent(db, limit=limit)
