@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: notify-router
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./notify_router.db
+      - key: LOG_RETENTION_DAYS
+        value: "30"
+    plan: free

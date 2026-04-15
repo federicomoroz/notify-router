@@ -1,12 +1,10 @@
+import json
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-
-from sqlalchemy import func
 
 from app.core.config import LOG_RETENTION_DAYS
 from app.core.database import Base, SessionLocal, engine
@@ -15,11 +13,13 @@ from app.controllers.events_controller import router as events_router
 from app.controllers.rules_controller import router as rules_router
 from app.controllers.channels_controller import router as channels_router
 from app.controllers.logs_controller import router as logs_router
-from app.models.orm import EventRecord
+from app.models.orm import Channel, Rule
+from app.models.repositories.channel_repository import ChannelRepository
 from app.models.repositories.log_repository import LogRepository
+from app.models.repositories.rule_repository import RuleRepository
 from app.models.services.dispatcher_service import DispatcherService
 from app.models.services.log_listener import LogListener
-from app.views.templates.dashboard import render_dashboard
+from app.views.templates.spa import render_spa
 
 scheduler = AsyncIOScheduler()
 
@@ -33,9 +33,65 @@ def _purge_logs_job() -> None:
         db.close()
 
 
+def _seed_demo_data() -> None:
+    """Insert demo channels + rules on first startup (when DB has 0 channels)."""
+    db = SessionLocal()
+    try:
+        if ChannelRepository.list_all(db):
+            return  # already seeded
+
+        webhook_ch = ChannelRepository.create(
+            db,
+            Channel(
+                name="httpbin-webhook",
+                type="webhook",
+                config=json.dumps({"url": "https://httpbin.org/post", "method": "POST", "headers": {}}),
+            ),
+        )
+        slack_ch = ChannelRepository.create(
+            db,
+            Channel(
+                name="slack-demo",
+                type="slack",
+                config=json.dumps({"webhook_url": "https://hooks.slack.com/services/DEMO/FAKE/URL"}),
+            ),
+        )
+
+        RuleRepository.create(
+            db,
+            Rule(
+                name="critical-alerts → webhook",
+                source_filter="*",
+                event_type_filter="alert",
+                condition_key="severity",
+                condition_value="critical",
+                channel_id=webhook_ch.id,
+                priority=10,
+                enabled=True,
+            ),
+        )
+        RuleRepository.create(
+            db,
+            Rule(
+                name="all-alerts → slack",
+                source_filter="*",
+                event_type_filter="alert",
+                condition_key=None,
+                condition_value=None,
+                channel_id=slack_ch.id,
+                priority=5,
+                enabled=True,
+            ),
+        )
+        print("[seed] demo channels and rules created")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _seed_demo_data()
 
     http_client = httpx.AsyncClient(timeout=15.0)
     events      = EventManager()
@@ -69,35 +125,5 @@ app.include_router(logs_router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def dashboard():
-    db = SessionLocal()
-    try:
-        total_events     = db.query(func.count(EventRecord.id)).scalar() or 0
-        counts           = LogRepository.count_by_status(db)
-        success_count   = counts.get("success", 0)
-        failed_count    = counts.get("failed", 0)
-        total_dispatches = success_count + failed_count
-
-        recent = LogRepository.list_all(db, limit=20)
-        recent_dicts = [
-            {
-                "id":            log.id,
-                "event_id":      log.event_id,
-                "channel_type":  log.channel_type,
-                "status":        log.status,
-                "response_info": log.response_info,
-                "dispatched_at": log.dispatched_at.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-            for log in recent
-        ]
-
-        html = render_dashboard(
-            total_events=total_events,
-            total_dispatches=total_dispatches,
-            success_count=success_count,
-            failed_count=failed_count,
-            recent_logs=recent_dicts,
-        )
-        return HTMLResponse(content=html)
-    finally:
-        db.close()
+def spa():
+    return HTMLResponse(content=render_spa())
