@@ -2,24 +2,64 @@
 
 A multi-channel notification routing engine built with FastAPI. Any system POSTs an event to it; configurable rules evaluate the payload; matched channels — email, Telegram, Slack, or any generic webhook — receive a formatted notification. Every dispatch is audited in full.
 
+A **browser UI** lets you manage channels, rules, and events without touching the terminal. A seed dataset is loaded on first boot so the live demo is immediately explorable.
+
+---
+
+## Live Demo
+
+```bash
+git clone https://github.com/federicomoroz/notify-router
+cd notify-router
+pip install -r requirements.txt
+uvicorn app.main:app --port 8003
+```
+
+Open **http://localhost:8003** in your browser.
+
+On first startup with an empty database, two demo channels and two routing rules are created automatically:
+
+| | Name | Type | Purpose |
+|--|------|------|---------|
+| Channel 1 | httpbin-webhook | webhook → `httpbin.org/post` | Always succeeds — shows a live dispatch |
+| Channel 2 | slack-demo | slack → fake URL | Always fails — shows the failure path |
+| Rule 1 | critical-alerts → webhook | `event_type=alert`, `severity=critical` | priority 10 |
+| Rule 2 | all-alerts → slack | `event_type=alert`, any payload | priority 5 |
+
+Go to the **Events** tab, hit **Send Event** with the pre-filled payload, and watch both rules fire in the dispatch result panel. Check the **Logs** tab to see the audit entries.
+
 ---
 
 ## What Problem It Solves
 
 Modern services generate alerts, status changes, and business events from dozens of sources. Wiring each service directly to each notification channel creates a spaghetti of integrations: every new channel requires touching every producer, credentials scatter across codebases, and there is no central audit of what was sent to whom.
 
-`notify-router` inverts this: producers post a generic event payload to a single endpoint. Routing rules — stored in a database and editable at runtime — decide which channels receive the notification and under what conditions. Adding a new channel or changing routing logic requires zero code changes.
+`notify-router` inverts this: producers post a generic event payload to a single endpoint. Routing rules — stored in a database and editable at runtime via the UI — decide which channels receive the notification and under what conditions. Adding a new channel or changing routing logic requires zero code changes.
 
 ```
                         ┌─────────────────────────────────────┐
   Any service           │           notify-router              │
   POST /events  ──────► │                                      │──► Email (SendGrid)
-  {source,             │  Rules engine evaluates payload       │──► Telegram Bot
+  {source,              │  Rules engine evaluates payload      │──► Telegram Bot
    event_type,          │  against all enabled rules           │──► Slack Webhook
    payload}             │                                      │──► Generic HTTP
                         │  Every dispatch written to audit log │
                         └─────────────────────────────────────┘
 ```
+
+---
+
+## Browser UI
+
+`GET /` serves a single-page app with five tabs. No build step, no framework — vanilla JS talking to the REST API.
+
+| Tab | What you can do |
+|-----|----------------|
+| **Dashboard** | Stats overview (events, dispatches, success/fail counts, success rate, channel and rule counts) + recent dispatch table |
+| **Channels** | Create, edit, and delete channels. Config fields change dynamically based on channel type |
+| **Rules** | Create and delete routing rules. Enable/disable individual rules with a toggle |
+| **Events** | Send a test event and see the dispatch result inline — which rules matched, which channels succeeded or failed |
+| **Logs** | Full dispatch audit log, filterable by status and event ID |
 
 ---
 
@@ -63,10 +103,11 @@ notify-router/
 │   ├── views/
 │   │   ├── schemas/             # Pydantic v2 request/response models + validators
 │   │   └── templates/
-│   │       └── dashboard.py     # Pure-Python HTML renderer (80s terminal aesthetic)
+│   │       └── spa.py           # Pure-Python HTML renderer — full browser SPA
 │   │
-│   └── main.py                  # Composition root — wires all dependencies, lifespan
+│   └── main.py                  # Composition root — wires all dependencies, lifespan, seed data
 │
+├── render.yaml                  # Render.com deploy config
 └── requirements.txt
 ```
 
@@ -134,8 +175,6 @@ events.subscribe(DispatchFailed,    log_listener._on_failed)
 events.emit(DispatchSucceeded(event_id=..., rule_id=..., info="HTTP 200"))
 ```
 
-This is the same `EventManager` used in rate-guardian — extracted as a reusable core component.
-
 ### Strategy (ChannelBase)
 Each channel type is a stateless class implementing the `ChannelBase` ABC:
 
@@ -158,7 +197,7 @@ class ChannelBase(ABC):
 ### Repository
 All database access is isolated behind static repository methods. Controllers and pipeline steps receive a `db: Session` and call `RuleRepository.match_all()`, `ChannelRepository.get()` etc. — never raw SQLAlchemy queries inline.
 
-`RuleRepository.match_all()` is worth examining directly: it loads all enabled rules in priority order and filters them in Python, which keeps the logic readable and testable without mocking SQLAlchemy:
+`RuleRepository.match_all()` loads all enabled rules in priority order and filters them in Python, keeping the logic readable and testable without mocking SQLAlchemy:
 
 ```python
 def _matches(rule, source, event_type, payload) -> bool:
@@ -172,7 +211,7 @@ def _matches(rule, source, event_type, payload) -> bool:
 ```
 
 ### Composition Root
-`app/main.py` is the only place where concrete dependencies are created and wired together. Every other module depends on abstractions or receives dependencies via FastAPI's `Depends` / `request.app.state`. This means the entire dependency graph can be re-wired for testing without touching application code.
+`app/main.py` is the only place where concrete dependencies are created and wired together. Every other module depends on abstractions or receives dependencies via FastAPI's `Depends` / `request.app.state`. The entire dependency graph can be re-wired for testing without touching application code.
 
 ---
 
@@ -190,7 +229,7 @@ def _matches(rule, source, event_type, payload) -> bool:
 
 ## Rule Matching
 
-Rules are evaluated in `priority DESC` order. The first three filters are applied in sequence; a rule only fires if all pass:
+Rules are evaluated in `priority DESC` order. All three filters must pass for a rule to fire:
 
 | Field | Value | Behaviour |
 |-------|-------|-----------|
@@ -216,7 +255,7 @@ channels
 rules
   id | name | source_filter | event_type_filter
      | condition_key | condition_value
-     | channel_id → channels.id (CASCADE DELETE)
+     | channel_id → channels.id
      | enabled | priority | created_at
 
 events
@@ -226,84 +265,6 @@ dispatch_logs
   id | event_id → events.id | rule_id | channel_id
      | channel_type | status (success|failed)
      | response_info | dispatched_at
-```
-
-Deleting a channel cascade-deletes all its rules (enforced at ORM level and by `PRAGMA foreign_keys = ON` at the SQLite connection level).
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/federicomoroz/notify-router
-cd notify-router
-pip install -r requirements.txt
-uvicorn app.main:app --port 8003 --reload
-```
-
-- **Dashboard:** `http://localhost:8003/`
-- **Swagger UI:** `http://localhost:8003/docs`
-
----
-
-## Usage Example
-
-### 1 — Create a Slack channel
-
-```bash
-curl -X POST http://localhost:8003/channels \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "ops-slack",
-    "type": "slack",
-    "config": { "webhook_url": "https://hooks.slack.com/services/..." }
-  }'
-# → {"id": 1, "name": "ops-slack", "type": "slack", "config": {...}}
-```
-
-### 2 — Create a routing rule
-
-```bash
-curl -X POST http://localhost:8003/rules \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "critical alerts → Slack",
-    "source_filter": "*",
-    "event_type_filter": "alert",
-    "condition_key": "severity",
-    "condition_value": "critical",
-    "channel_id": 1,
-    "priority": 10
-  }'
-```
-
-### 3 — Post an event (matches the rule)
-
-```bash
-curl -X POST http://localhost:8003/events \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "monitor",
-    "event_type": "alert",
-    "payload": { "severity": "critical", "message": "disk at 95%" }
-  }'
-# → 202
-# {
-#   "event_id": 1,
-#   "matched_rules": 1,
-#   "dispatches": [
-#     {"rule_id": 1, "channel_id": 1, "channel_type": "slack",
-#      "status": "success", "info": "Slack OK"}
-#   ]
-# }
-```
-
-### 4 — Audit the dispatch
-
-```bash
-curl "http://localhost:8003/logs?event_id=1"
-# → [{"id":1,"event_id":1,"channel_type":"slack","status":"success",
-#      "response_info":"Slack OK","dispatched_at":"2026-..."}]
 ```
 
 ---
@@ -333,13 +294,13 @@ curl "http://localhost:8003/logs?event_id=1"
 | `GET` | `/channels` | List all channels |
 | `POST` | `/channels` | Create channel |
 | `PUT` | `/channels/{id}` | Partial update |
-| `DELETE` | `/channels/{id}` | Delete (cascade-deletes rules) |
+| `DELETE` | `/channels/{id}` | Delete |
 
-**Channel types and required config keys:**
+**Channel types and config keys:**
 
 | type | config keys |
 |------|-------------|
-| `email` | `to` (address), `subject_template` (optional, supports `{source}` and `{event_type}`) |
+| `email` | `to`, `subject_template` (supports `{source}` and `{event_type}`) |
 | `telegram` | `bot_token`, `chat_id` |
 | `slack` | `webhook_url` |
 | `webhook` | `url`, `method` (default `POST`), `headers` (optional dict) |
@@ -350,7 +311,7 @@ curl "http://localhost:8003/logs?event_id=1"
 |--------|------|-------------|
 | `GET` | `/rules` | List all rules (priority DESC) |
 | `POST` | `/rules` | Create rule |
-| `PUT` | `/rules/{id}` | Partial update |
+| `PUT` | `/rules/{id}` | Partial update (supports `enabled` toggle) |
 | `DELETE` | `/rules/{id}` | Delete rule |
 
 ### Logs
@@ -361,17 +322,16 @@ curl "http://localhost:8003/logs?event_id=1"
 
 Query params: `event_id`, `status` (`success`\|`failed`), `limit` (1–10000, default 100).
 
-### Dashboard
+### UI
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/` | HTML dashboard — totals, success rate, recent dispatch log |
+| `GET` | `/` | Browser SPA — full channel/rule/event management |
+| `GET` | `/docs` | Swagger UI |
 
 ---
 
 ## Configuration
-
-All settings via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
