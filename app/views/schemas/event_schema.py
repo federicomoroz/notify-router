@@ -1,12 +1,12 @@
 import json
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EventIn(BaseModel):
-    source:     str
-    event_type: str
+    source:     str = Field(min_length=1, max_length=100)
+    event_type: str = Field(min_length=1, max_length=100)
     payload:    dict = {}
 
     @model_validator(mode="after")

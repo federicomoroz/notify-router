@@ -34,8 +34,13 @@ def update_channel(channel_id: int, body: ChannelUpdate, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="Channel not found")
     data = body.model_dump(exclude_unset=True)
     if "config" in data:
-        data["config"] = json.dumps(data["config"])
-    return ChannelRepository.update(db, channel, data)
+        # Guard: null or non-dict config must never reach the DB as "null"
+        data["config"] = json.dumps(data["config"] if isinstance(data["config"], dict) else {})
+    try:
+        return ChannelRepository.update(db, channel, data)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Channel could not be updated (integrity error)")
 
 
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)

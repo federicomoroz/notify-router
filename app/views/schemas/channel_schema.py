@@ -1,12 +1,12 @@
 import json
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 VALID_TYPES = {"email", "telegram", "slack", "webhook"}
 
 
 class ChannelIn(BaseModel):
-    name:   str
+    name:   str = Field(min_length=1, max_length=100)
     type:   str
     config: dict = {}
 
@@ -19,7 +19,7 @@ class ChannelIn(BaseModel):
 
 
 class ChannelUpdate(BaseModel):
-    name:   str | None = None
+    name:   str | None = Field(default=None, min_length=1, max_length=100)
     type:   str | None = None
     config: dict | None = None
 
@@ -44,7 +44,8 @@ class ChannelOut(BaseModel):
     def parse_config(cls, v):
         if isinstance(v, str):
             try:
-                return json.loads(v)
+                result = json.loads(v)
+                return result if isinstance(result, dict) else {}
             except json.JSONDecodeError:
                 return {}
-        return v
+        return v if isinstance(v, dict) else {}

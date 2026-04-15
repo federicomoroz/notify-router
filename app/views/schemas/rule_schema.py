@@ -1,22 +1,14 @@
 from datetime import datetime
 
-from pydantic import BaseModel, model_validator
-
-
-def _validate_condition_pair(values):
-    key = values.get("condition_key") if isinstance(values, dict) else getattr(values, "condition_key", None)
-    val = values.get("condition_value") if isinstance(values, dict) else getattr(values, "condition_value", None)
-    if (key is None) != (val is None):
-        raise ValueError("condition_key and condition_value must both be set or both be null")
-    return values
+from pydantic import BaseModel, Field, model_validator
 
 
 class RuleIn(BaseModel):
-    name:              str
-    source_filter:     str = "*"
-    event_type_filter: str = "*"
-    condition_key:     str | None = None
-    condition_value:   str | None = None
+    name:              str = Field(min_length=1, max_length=100)
+    source_filter:     str = Field(default="*", max_length=100)
+    event_type_filter: str = Field(default="*", max_length=100)
+    condition_key:     str | None = Field(default=None, max_length=100)
+    condition_value:   str | None = Field(default=None, max_length=255)
     channel_id:        int
     enabled:           bool = True
     priority:          int = 0
@@ -29,22 +21,31 @@ class RuleIn(BaseModel):
 
 
 class RuleUpdate(BaseModel):
-    name:              str | None = None
-    source_filter:     str | None = None
-    event_type_filter: str | None = None
-    condition_key:     str | None = None
-    condition_value:   str | None = None
+    name:              str | None = Field(default=None, min_length=1, max_length=100)
+    source_filter:     str | None = Field(default=None, max_length=100)
+    event_type_filter: str | None = Field(default=None, max_length=100)
+    condition_key:     str | None = Field(default=None, max_length=100)
+    condition_value:   str | None = Field(default=None, max_length=255)
     channel_id:        int | None = None
     enabled:           bool | None = None
     priority:          int | None = None
 
     @model_validator(mode="after")
     def check_condition_pair(self):
-        # Only validate when both fields are explicitly provided in the update
-        if self.condition_key is not None and self.condition_value is None:
-            raise ValueError("condition_value is required when condition_key is set")
-        if self.condition_value is not None and self.condition_key is None:
-            raise ValueError("condition_key is required when condition_value is set")
+        # Only validate consistency when BOTH fields are explicitly sent in the same request.
+        # Using model_fields_set to distinguish "not sent" (default None) from "explicitly sent".
+        explicitly_set = self.model_fields_set
+        key_sent = "condition_key" in explicitly_set
+        val_sent = "condition_value" in explicitly_set
+
+        if key_sent and val_sent:
+            # Both provided: they must both be set or both be null
+            if (self.condition_key is None) != (self.condition_value is None):
+                raise ValueError("condition_key and condition_value must both be set or both be null")
+        elif key_sent and self.condition_key is not None and not val_sent:
+            raise ValueError("condition_value is required when setting condition_key")
+        elif val_sent and self.condition_value is not None and not key_sent:
+            raise ValueError("condition_key is required when setting condition_value")
         return self
 
 
