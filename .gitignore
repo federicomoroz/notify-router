@@ -2,3 +2,5 @@ notify_router.db
 __pycache__/
 *.pyc
 .env
+.venv/
+.pytest_cache/
