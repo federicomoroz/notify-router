@@ -24,3 +24,4 @@ class DispatchFailed:
     channel_id:   int
     channel_type: str
     error:        str
+    attempt:      int = 1

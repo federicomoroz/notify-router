@@ -8,6 +8,9 @@ class EventIn(BaseModel):
     source:     str = Field(min_length=1, max_length=100)
     event_type: str = Field(min_length=1, max_length=100)
     payload:    dict = {}
+    # Optional. A sender that retries (an outbox, for instance) sends the same key
+    # again and the event is not dispatched twice.
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def check_payload_size(self):

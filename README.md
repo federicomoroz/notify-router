@@ -339,6 +339,26 @@ Query params: `event_id`, `status` (`success`\|`failed`), `limit` (1–10000, de
 | `SENDGRID_API_KEY` | _(empty)_ | Required for `email` channels |
 | `SENDER_EMAIL` | _(empty)_ | From address for outgoing emails |
 | `LOG_RETENTION_DAYS` | `30` | Dispatch logs older than this are purged daily |
+| `INGEST_API_KEY` | _(empty)_ | When set, `POST /events` requires it in the `X-API-Key` header. Empty: open, as before |
+| `DISPATCH_MAX_ATTEMPTS` | `1` | Total attempts per dispatch. `1` means no retries, as before |
+| `RETRY_INTERVAL_SECONDS` | `15` | How often due retries are attempted |
+
+### Reliable delivery (optional)
+
+Everything here is off until configured, so the demo above behaves exactly as it always did.
+
+- **Retries.** With `DISPATCH_MAX_ATTEMPTS` above 1, a dispatch that fails (the site lost internet, Telegram is down) is tried again 30 s later, doubling up to 15 minutes between attempts, until it is delivered or the maximum is reached. Each attempt is in `/logs`; `GET /retries` shows what is pending, delivered late or given up.
+- **No duplicates.** A sender that retries can add `"idempotency_key"` to the event. The same key from the same source is stored and dispatched once; the repeat gets `"duplicate": true`.
+- **API key.** `INGEST_API_KEY` protects the event intake. The management UI stays as is, so run it on a private network.
+- **Telegram** escapes Markdown in payloads, so a value such as `Ojo_de_bife` no longer makes Telegram reject the message.
+- **Existing databases** get the new column on start; nothing to migrate by hand.
+
+```bash
+docker build -t notify-router .
+docker run -p 8003:8003 -v notify-data:/data -e DISPATCH_MAX_ATTEMPTS=10 notify-router
+```
+
+Tests: `pip install pytest && pytest` (17 tests; the first file pins down the behavior from before these options existed).
 
 ---
 

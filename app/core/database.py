@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import DATABASE_URL
@@ -30,3 +30,20 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def upgrade_schema(target=None) -> None:
+    """
+    create_all() makes missing tables but never changes existing ones, so a
+    database from an older version gets its new columns here. Safe to run on
+    every start: it only adds what is missing.
+    """
+    target = target or engine
+    columns = {c["name"] for c in inspect(target).get_columns("events")}
+    with target.begin() as conn:
+        if "idempotency_key" not in columns:
+            conn.execute(text("ALTER TABLE events ADD COLUMN idempotency_key VARCHAR(100)"))
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_events_source_idempotency_key "
+            "ON events (source, idempotency_key)"
+        ))

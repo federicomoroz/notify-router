@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.orm import Channel, DispatchLog, EventRecord, Rule  # noqa: E402
+from app.models.orm import Channel, DispatchLog, DispatchRetry, EventRecord, Rule  # noqa: E402
 from app.models.services.dispatcher_service import DispatcherService  # noqa: E402
 
 
@@ -62,7 +62,7 @@ def outbound(client):
 def clean(client):
     db = SessionLocal()
     try:
-        for model in (DispatchLog, Rule, Channel, EventRecord):
+        for model in (DispatchRetry, DispatchLog, Rule, Channel, EventRecord):
             db.query(model).delete()
         db.commit()
     finally:

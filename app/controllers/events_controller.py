@@ -1,9 +1,12 @@
 import json
+import secrets
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.database import get_db
 from app.controllers.pipeline import DispatchStep, RouterContext, RouterPipeline, RuleMatchStep
 from app.models.orm import EventRecord
@@ -24,19 +27,42 @@ def _get_events(request: Request):
     return request.app.state.events
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+def _require_ingest_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Only when INGEST_API_KEY is set; otherwise /events stays open, as it always was."""
+    expected = config.INGEST_API_KEY
+    if expected and not secrets.compare_digest((x_api_key or "").encode(), expected.encode()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or wrong X-API-Key")
+
+
+def _duplicate(record: EventRecord) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"event_id": record.id, "matched_rules": 0, "dispatches": [], "duplicate": True},
+    )
+
+
+@router.post("", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(_require_ingest_key)])
 async def receive_event(
     body: EventIn,
     request: Request,
     db: Session = Depends(get_db),
     dispatcher: DispatcherService = Depends(_get_dispatcher),
 ):
+    if body.idempotency_key and (seen := EventRepository.find_by_key(db, body.source, body.idempotency_key)):
+        return _duplicate(seen)
+
     record = EventRecord(
         source=body.source,
         event_type=body.event_type,
         payload=json.dumps(body.payload),
+        idempotency_key=body.idempotency_key,
     )
-    record = EventRepository.create(db, record)
+    try:
+        record = EventRepository.create(db, record)
+    except IntegrityError:
+        # The same key arrived twice at the same moment: the other request dispatches it.
+        db.rollback()
+        return _duplicate(EventRepository.find_by_key(db, body.source, body.idempotency_key))
 
     events_bus = _get_events(request)
     ctx = RouterContext(
@@ -54,6 +80,7 @@ async def receive_event(
             "event_id":      record.id,
             "matched_rules": len(ctx.matched_rules),
             "dispatches":    results,
+            "duplicate":     False,
         },
     )
 

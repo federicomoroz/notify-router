@@ -4,6 +4,17 @@ from app.models.orm import EventRecord
 from app.models.services.interfaces import ChannelBase
 
 
+_MARKDOWN_SPECIALS = ("\\", "_", "*", "`", "[")
+
+
+def _escape(value: object) -> str:
+    """Telegram rejects a message whose text breaks its Markdown, e.g. a name with "_" or "*"."""
+    text = str(value)
+    for char in _MARKDOWN_SPECIALS:
+        text = text.replace(char, "\\" + char)
+    return text
+
+
 class TelegramChannel(ChannelBase):
     @staticmethod
     async def send(
@@ -20,7 +31,7 @@ class TelegramChannel(ChannelBase):
 
         text = (
             f"*[{event.source}]* `{event.event_type}`\n"
-            + "\n".join(f"• *{k}*: {v}" for k, v in payload.items())
+            + "\n".join(f"• *{_escape(k)}*: {_escape(v)}" for k, v in payload.items())
         )
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 

@@ -21,5 +21,13 @@ class EventRepository:
         )
 
     @staticmethod
+    def find_by_key(db: Session, source: str, idempotency_key: str) -> EventRecord | None:
+        return (
+            db.query(EventRecord)
+            .filter(EventRecord.source == source, EventRecord.idempotency_key == idempotency_key)
+            .first()
+        )
+
+    @staticmethod
     def get(db: Session, event_id: int) -> EventRecord | None:
         return db.query(EventRecord).filter(EventRecord.id == event_id).first()
