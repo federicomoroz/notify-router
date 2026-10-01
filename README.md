@@ -359,7 +359,7 @@ docker build -t notify-router .
 docker run -p 8003:8003 -v notify-data:/data -e DISPATCH_MAX_ATTEMPTS=10 notify-router
 ```
 
-Tests: `pip install pytest && pytest` (17 tests; the first file pins down the behavior from before these options existed).
+Tests: `pip install pytest && pytest` (18 tests; the first file pins down the behavior from before these options existed).
 
 ---
 
