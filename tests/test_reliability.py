@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, inspect as inspect_db, text
 
 from app.core import config
 from app.core.database import upgrade_schema
-from app.main import schedule_retries
+from app.main import _seed_demo_data, schedule_retries
 from conftest import make_channel, make_rule
 
 LATER = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
@@ -148,3 +148,13 @@ def test_the_retry_round_is_a_coroutine_the_scheduler_awaits():
     schedule_retries(scheduler, worker=None, application=None)
 
     assert inspect.iscoroutinefunction(scheduler.get_job("retry_dispatches").func)
+
+
+# Demo data
+
+def test_a_real_deployment_can_skip_the_demo_channels(clean, monkeypatch):
+    monkeypatch.setattr(config, "SEED_DEMO_DATA", False)
+
+    _seed_demo_data()
+
+    assert clean.get("/channels").json() == []

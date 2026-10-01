@@ -40,6 +40,8 @@ def _purge_logs_job() -> None:
 
 def _seed_demo_data() -> None:
     """Insert demo channels + rules on first startup (when DB has 0 channels)."""
+    if not config.SEED_DEMO_DATA:
+        return
     db = SessionLocal()
     try:
         if ChannelRepository.list_all(db):

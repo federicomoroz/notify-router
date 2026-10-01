@@ -342,6 +342,7 @@ Query params: `event_id`, `status` (`success`\|`failed`), `limit` (1–10000, de
 | `INGEST_API_KEY` | _(empty)_ | When set, `POST /events` requires it in the `X-API-Key` header. Empty: open, as before |
 | `DISPATCH_MAX_ATTEMPTS` | `1` | Total attempts per dispatch. `1` means no retries, as before |
 | `RETRY_INTERVAL_SECONDS` | `15` | How often due retries are attempted |
+| `SEED_DEMO_DATA` | `true` | `false` skips the demo channels and rules on first boot |
 
 ### Reliable delivery (optional)
 

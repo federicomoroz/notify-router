@@ -15,3 +15,6 @@ INGEST_API_KEY         = os.getenv("INGEST_API_KEY", "")
 # Total attempts per dispatch, the first one included. 1 means no retries.
 DISPATCH_MAX_ATTEMPTS  = int(os.getenv("DISPATCH_MAX_ATTEMPTS", "1"))
 RETRY_INTERVAL_SECONDS = int(os.getenv("RETRY_INTERVAL_SECONDS", "15"))
+
+# The demo channels and rules created on first boot. A real deployment turns them off.
+SEED_DEMO_DATA         = os.getenv("SEED_DEMO_DATA", "true").lower() != "false"
